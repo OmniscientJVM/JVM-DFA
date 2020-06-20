@@ -1,0 +1,163 @@
+trigger:
+  branches:
+    include:
+      - '*'
+  tags:
+    include:
+      - '*'
+
+variables:
+  GRADLE_USER_HOME: $(Pipeline.Workspace)/.gradle
+
+stages:
+- stage: Build
+  jobs:
+    - job: Linux
+
+      pool:
+        vmImage: ubuntu-18.04
+
+      steps:
+        - task: Cache@2
+          displayName: 'Restore Gradle Build Cache'
+          inputs:
+            key: 'gradle | "$(Agent.OS)"'
+            restoreKeys: gradle
+            path: $(GRADLE_USER_HOME)
+
+        - bash: wget https://cdn.azul.com/zulu/bin/zulu14.28.21-ca-jdk14.0.1-linux_x64.tar.gz
+
+        - task: JavaToolInstaller@0
+          inputs:
+            verisonSpec: "14"
+            jdkArchitectureOption: x64
+            jdkSourceOption: LocalDirectory
+            jdkFile: "zulu14.28.21-ca-jdk14.0.1-linux_x64.tar.gz"
+            jdkDestinationDirectory: '$(agent.toolsDirectory)/jdk14'
+            cleanDestinationDirectory: true
+
+        - task: Gradle@2
+          displayName: 'Check'
+          inputs:
+            workingDirectory: ''
+            gradleWrapperFile: 'gradlew'
+            options: '--info --stacktrace -PlogTests'
+            publishJUnitResults: true
+            testResultsFiles: '**/TEST-*.xml'
+            tasks: 'check'
+
+        - task: Gradle@2
+          displayName: 'JacocoRootReport'
+          inputs:
+            workingDirectory: ''
+            gradleWrapperFile: 'gradlew'
+            options: '--info --stacktrace -PlogTests'
+            publishJUnitResults: true
+            testResultsFiles: '**/TEST-*.xml'
+            tasks: 'jacocoRootReport'
+
+        # Stop the Gradle daemon to ensure no files are left open (impacting the save cache
+        # operation later)
+        - script: './gradlew --stop'
+          displayName: 'Stop Gradle Daemon'
+
+        - bash: bash <(curl -s https://codecov.io/bash) || echo 'Codecov failed to upload'
+          displayName: 'CodeCov'
+          workingDirectory: ''
+
+    - job: MacOS
+
+      pool:
+        vmImage: macOS-10.14
+
+      steps:
+        - task: Cache@2
+          displayName: 'Restore Gradle Build Cache'
+          inputs:
+            key: 'gradle | "$(Agent.OS)"'
+            restoreKeys: gradle
+            path: $(GRADLE_USER_HOME)
+
+        - bash: wget https://cdn.azul.com/zulu/bin/zulu14.28.21-ca-jdk14.0.1-macosx_x64.tar.gz
+
+        - task: JavaToolInstaller@0
+          inputs:
+            verisonSpec: "14"
+            jdkArchitectureOption: x64
+            jdkSourceOption: LocalDirectory
+            jdkFile: "zulu14.28.21-ca-jdk14.0.1-macosx_x64.tar.gz"
+            jdkDestinationDirectory: '$(agent.toolsDirectory)/jdk14'
+            cleanDestinationDirectory: true
+
+        - task: Gradle@2
+          displayName: 'Check'
+          inputs:
+            workingDirectory: ''
+            gradleWrapperFile: 'gradlew'
+            options: '--info --stacktrace -PlogTests'
+            publishJUnitResults: false
+            tasks: 'check'
+
+        - task: Gradle@2
+          displayName: 'JacocoRootReport'
+          inputs:
+            workingDirectory: ''
+            gradleWrapperFile: 'gradlew'
+            options: '--info --stacktrace -PlogTests'
+            publishJUnitResults: true
+            testResultsFiles: '**/TEST-*.xml'
+            tasks: 'jacocoRootReport'
+
+        # Stop the Gradle daemon to ensure no files are left open (impacting the save cache
+        # operation later)
+        - script: './gradlew --stop'
+          displayName: 'Stop Gradle Daemon'
+
+    - job: Windows
+
+      pool:
+        vmImage: windows-2019
+
+      steps:
+        # SilentlyContinue is important because it makes the download go WAY faster
+        - powershell: "$ProgressPreference = 'SilentlyContinue'\nInvoke-WebRequest -URI https://cdn.azul.com/zulu/bin/zulu14.28.21-ca-jdk14.0.1-win_x64.zip -OutFile zulu14.28.21-ca-jdk14.0.1-win_x64.zip"
+
+        - task: JavaToolInstaller@0
+          inputs:
+            verisonSpec: "14"
+            jdkArchitectureOption: x64
+            jdkSourceOption: LocalDirectory
+            jdkFile: "zulu14.28.21-ca-jdk14.0.1-win_x64.zip"
+            jdkDestinationDirectory: '$(agent.toolsDirectory)/jdk14'
+            cleanDestinationDirectory: true
+
+        - task: Cache@2
+          displayName: 'Restore Gradle Build Cache'
+          inputs:
+            key: 'gradle | "$(Agent.OS)"'
+            restoreKeys: gradle
+            path: $(GRADLE_USER_HOME)
+
+        - task: Gradle@2
+          displayName: 'Check'
+          inputs:
+            workingDirectory: ''
+            gradleWrapperFile: 'gradlew'
+            options: '--info --stacktrace --scan -PlogTests'
+            publishJUnitResults: false
+            tasks: 'check'
+
+        - task: Gradle@2
+          displayName: 'JacocoRootReport'
+          inputs:
+            workingDirectory: ''
+            gradleWrapperFile: 'gradlew'
+            options: '--info --stacktrace -PlogTests'
+            publishJUnitResults: true
+            testResultsFiles: '**/TEST-*.xml'
+            tasks: 'jacocoRootReport'
+
+        # Stop the Gradle daemon to ensure no files are left open (impacting the save cache
+        # operation later)
+        - script: './gradlew --stop'
+          displayName: 'Stop Gradle Daemon'
